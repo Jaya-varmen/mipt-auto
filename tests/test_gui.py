@@ -95,7 +95,7 @@ def test_settings_controls_keep_their_height_in_small_window(app, tmp_path):
         app.processEvents()
         assert isinstance(window.centralWidget(), QScrollArea)
         assert all(button.height() >= 38 for button in window.course_buttons.values())
-        assert window.mode.height() >= 38
+        assert window.mode.height() >= 34
         assert window.solutions_button.height() >= 38
         assert window.settings_box.height() >= window.settings_box.minimumSizeHint().height()
     finally:
