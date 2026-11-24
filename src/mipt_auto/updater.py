@@ -8,6 +8,7 @@ from pathlib import Path, PurePosixPath
 import platform
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,15 @@ REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 VERSION_PATTERN = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 MAX_ARCHIVE_SIZE = 250 * 1024 * 1024
 DEFAULT_REPOSITORY = "Jaya-varmen/mipt-auto"
+
+
+def _https_context() -> ssl.SSLContext:
+    # В python.org Python для macOS путь к корневым сертификатам может быть пустым.
+    # Системный пакет macOS работает независимо от окружения Finder и терминала.
+    macos_bundle = Path("/etc/ssl/cert.pem")
+    if sys.platform == "darwin" and macos_bundle.is_file():
+        return ssl.create_default_context(cafile=str(macos_bundle))
+    return ssl.create_default_context()
 
 
 @dataclass(frozen=True)
@@ -86,11 +96,12 @@ def select_release(payload: dict, current_version: str, name: str) -> Release | 
 
 def check_latest_release(project_dir: Path) -> Release | None:
     repository = load_repository(project_dir)
+    context = _https_context()
     request = Request(f"https://api.github.com/repos/{repository}/releases/latest",
                       headers={"Accept": "application/vnd.github+json", "User-Agent": "MIPT-Auto-Updater"})
     for attempt in range(3):
         try:
-            with urlopen(request, timeout=15) as response:
+            with urlopen(request, timeout=15, context=context) as response:
                 payload = json.load(response)
             break
         except HTTPError as exc:
@@ -118,7 +129,8 @@ def download_release(release: Release, data_dir: Path) -> Path:
     temporary = directory / (release.name + ".part")
     digest, size = hashlib.sha256(), 0
     try:
-        with urlopen(Request(release.url, headers={"User-Agent": "MIPT-Auto-Updater"}), timeout=30) as response, temporary.open("wb") as output:
+        with urlopen(Request(release.url, headers={"User-Agent": "MIPT-Auto-Updater"}),
+                     timeout=30, context=_https_context()) as response, temporary.open("wb") as output:
             while block := response.read(1024 * 1024):
                 size += len(block)
                 if size > MAX_ARCHIVE_SIZE:
