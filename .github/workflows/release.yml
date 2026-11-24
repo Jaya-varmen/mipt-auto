@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
       - run: python -m pip install -e '.[dev]'
       - run: python -m pytest tests/test_accounts.py tests/test_models.py tests/test_course_profiles.py tests/test_windows_setup.py tests/test_updater.py tests/test_gui.py -m 'not browser' -q
       - run: python scripts/build_release.py
