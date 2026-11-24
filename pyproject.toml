@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mipt-auto"
+version = "0.3.0"
+description = "Приложение macOS и Windows для согласованной работы с учебной платформой"
+requires-python = ">=3.10"
+dependencies = ["playwright>=1.51,<2", "PySide6-Essentials==6.8.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+mipt-auto = "mipt_auto.cli:main"
+mipt-auto-gui = "mipt_auto.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mipt_auto = ["demo_site/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["browser: проверка в настоящем браузере Playwright"]
+

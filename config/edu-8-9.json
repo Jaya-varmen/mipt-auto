@@ -1,0 +1,43 @@
+{
+  "base_url": "https://edu.mipt.ru/member",
+  "course_url": "https://edu.mipt.ru/member/meroprijatija/python-base-8-9-class-offline/online-course/268/",
+  "course_key": "python-8-9",
+  "course_title": "Программирование на Python для 8–9 классов (очно)",
+  "module_title": "Модуль 1. Базовый синтаксис, условия и циклы",
+  "browser_channel": "chrome",
+  "timeout_ms": 10000,
+  "navigation_timeout_ms": 30000,
+  "navigation_pause_min_seconds": 5,
+  "navigation_pause_max_seconds": 10,
+  "result_timeout_ms": 45000,
+  "collection": {
+    "scope_css": "details:has(> summary:has-text(\"Модуль 1. Базовый синтаксис, условия и циклы\")) > div",
+    "row_css": "a.link1",
+    "title_css": ":scope > span",
+    "statuses": {
+      "completed": "svg.check_yes",
+      "incomplete": "svg.check_none"
+    }
+  },
+  "execution": {
+    "task_heading": {
+      "css": "h2.title_course"
+    },
+    "start": {
+      "css": "button:has-text(\"Начать попытку\"), button:has-text(\"Начать новую попытку\")"
+    },
+    "editor": {
+      "css": ".monaco-editor"
+    },
+    "editor_kind": "monaco",
+    "submit": {
+      "role": "button",
+      "name": "Проверить код"
+    },
+    "accepted": {
+      "scope_css": "[role=tabpanel][id$='-content-output']",
+      "text": "Решение принято"
+    },
+    "attempt_limit_seconds": 540
+  }
+}

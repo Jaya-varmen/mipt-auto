@@ -1,0 +1,31 @@
+name: Release MIPT Auto
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m pytest tests/test_accounts.py tests/test_models.py tests/test_course_profiles.py tests/test_windows_setup.py tests/test_updater.py tests/test_gui.py -m 'not browser' -q
+      - run: python scripts/build_release.py
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python -c 'import mipt_auto; print(mipt_auto.__version__)')
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists"
+          else
+            gh release create "$TAG" dist/mipt-auto-macos-arm64.zip dist/mipt-auto-windows-x64.zip --target "$GITHUB_SHA" --generate-notes
+          fi

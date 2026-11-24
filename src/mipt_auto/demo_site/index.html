@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MIPT Auto · Локальный стенд</title>
+<style>
+  :root { color-scheme: light; font: 16px/1.6 -apple-system, BlinkMacSystemFont, sans-serif; color: #18233c; background: #f4f6fa; }
+  * { box-sizing: border-box; } body { margin: 0; }
+  header { border-bottom: 1px solid #dce2ef; background: white; padding: 20px 7%; display: flex; justify-content: space-between; }
+  header b { letter-spacing: .04em; } .tag { color: #56617a; font-size: 13px; }
+  main { max-width: 1050px; margin: 60px auto; padding: 0 28px; }
+  h1 { line-height: 1.2; font-size: 36px; max-width: 760px; } h2 { font-size: 21px; }
+  .eyebrow { color: #5f5ac9; font-size: 13px; font-weight: 700; letter-spacing: .12em; }
+  p { color: #58647b; } section { background: white; border: 1px solid #dce2ef; border-radius: 16px; padding: 28px; margin: 24px 0; }
+  button, .button { background: #5953d9; color: white; border: 0; padding: 13px 20px; border-radius: 9px; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
+  button:disabled { opacity: .5; cursor: wait; } a { color: #5149bd; }
+  .task { display: flex; align-items: center; justify-content: space-between; gap: 24px; border-top: 1px solid #e7ebf3; padding: 20px 0; }
+  .task span { font-size: 13px; color: #66718a; white-space: nowrap; } [data-status=completed] { color: #14704d !important; }
+  textarea { width: 100%; height: 240px; background: #172039; color: #ebf0ff; border: 0; border-radius: 9px; font: 15px/1.7 ui-monospace, monospace; padding: 20px; resize: vertical; margin: 12px 0; }
+  #accepted { color: #11734a; background: #e6f7ef; padding: 16px; border-radius: 8px; }
+  #rejected { color: #aa3434; background: #fcecec; padding: 16px; border-radius: 8px; }
+  code { background: #edf0f7; padding: 3px 6px; border-radius: 4px; }
+  footer { font-size: 13px; color: #6e7890; margin-top: 32px; }
+  [hidden] { display: none !important; }
+</style>
+<header><b>MIPT AUTO</b><span class="tag">Локальный демонстрационный стенд</span></header>
+<main>
+  <div class="eyebrow">ПРОВЕРКА ПРОТОТИПА · 01</div>
+  <div id="home" hidden>
+    <h1>Одна задача. Полный цикл.</h1>
+    <p>Этот стенд воспроизводит шаги оператора. Здесь нет реальных аккаунтов и оценок.</p>
+    <section><h2>Демонстрационный курс</h2><p>Открытие модуля, выбор решения и ожидание результата.</p><a class="button" href="/course">ПЕРЕЙТИ К КУРСУ</a></section>
+  </div>
+  <div id="course" hidden>
+    <h1>Демонстрационный курс</h1><p>Статусы задач читаются из явно заданных маркеров стенда.</p>
+    <section><button id="module" aria-expanded="false" aria-controls="tasks">Модуль 1. Проверка прототипа</button>
+      <div id="tasks" hidden>
+        <div class="task"><a href="/task/1.1.1">Задача 1.1.1. Приветствие стенда</a><span data-status="not_started">Не начата</span></div>
+        <div class="task"><a href="/task/1.1.2">Задача 1.1.2. Уже завершённый пример</a><span data-status="completed">Выполнена</span></div>
+        <div class="task"><a href="/task/1.1.3">Задача 1.1.3. Эхо тестирующей системы</a><span data-status="not_started">Не начата</span></div>
+      </div>
+    </section>
+  </div>
+  <div id="exercise" hidden>
+    <a href="/course">← Вернуться к курсу</a>
+    <h1 id="task-title">Задача 1.1.1. Приветствие стенда</h1>
+    <p id="instruction">Выведите строку <code>Привет, стенд!</code>. Демонстрационный лимит попытки — 9 минут.</p>
+    <section>
+      <div id="before"><h2>Начните попытку</h2><p>После подтверждения оператором прототип вставит код и запросит проверку.</p><button id="start">Начать попытку</button></div>
+      <div id="attempt" hidden><label for="code">Python · <span id="timer">9:00</span></label><textarea id="code" spellcheck="false" aria-label="Код решения"></textarea><button id="check">Проверить код</button></div>
+      <p id="pending" hidden>Проверка…</p><p id="accepted" role="status" hidden>Решение принято</p><p id="rejected" role="status" hidden>Решение отклонено</p>
+      <a id="next" class="button" href="/task/1.1.3" hidden>Следующая задача</a>
+    </section>
+  </div>
+  <footer>Стенд сравнивает текст с эталоном и не исполняет Python. Это проверка приложения, а не edu.mipt.ru.</footer>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  window.demoSubmissions = 0;
+  const path = location.pathname;
+  if (path === '/course') $('course').hidden = false;
+  else if (path.startsWith('/task/')) $('exercise').hidden = false;
+  else $('home').hidden = false;
+  // Убираем скрытые заголовки других экранов, чтобы локаторы были однозначны.
+  for (const id of ['home', 'course', 'exercise']) if ($(id).hidden) $(id).remove();
+  if ($('module')) $('module').onclick = () => {
+    $('tasks').hidden = !$('tasks').hidden;
+    $('module').setAttribute('aria-expanded', String(!$('tasks').hidden));
+  };
+  if (path === '/task/1.1.2') {
+    $('task-title').textContent = 'Задача 1.1.2. Уже завершённый пример';
+    $('before').hidden = true; $('accepted').hidden = false;
+  }
+  if (path === '/task/1.1.3') {
+    $('task-title').textContent = 'Задача 1.1.3. Эхо тестирующей системы';
+    $('instruction').textContent = 'Прочитайте строку и выведите её без изменений. Лимит попытки — 9 минут.';
+  }
+  if ($('start')) $('start').onclick = () => {
+    $('before').hidden = true; $('attempt').hidden = false; $('code').focus();
+    let seconds = 540;
+    const timer = setInterval(() => {
+      seconds -= 1;
+      $('timer').textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      if (seconds === 0) { clearInterval(timer); $('check').disabled = true; $('rejected').textContent = 'Время попытки истекло'; $('rejected').hidden = false; }
+    }, 1000);
+  };
+  if ($('check')) $('check').onclick = () => {
+    window.demoSubmissions += 1;
+    $('check').disabled = true; $('pending').hidden = false;
+    const mode = new URLSearchParams(location.search).get('result');
+    if (mode === 'timeout') return;
+    setTimeout(() => {
+      $('pending').hidden = true;
+      const expected = path === '/task/1.1.3' ? 'text = input()\nprint(text)' : "print('Привет, стенд!')";
+      const good = $('code').value.trim() === expected;
+      if (mode === 'ambiguous') { $('accepted').hidden = false; $('rejected').hidden = false; }
+      else if (mode === 'unexpected') { $('accepted').textContent = 'Проверка завершена'; $('accepted').hidden = false; }
+      else $(good ? 'accepted' : 'rejected').hidden = false;
+      if (good && path === '/task/1.1.1' && !mode) $('next').hidden = false;
+    }, 300);
+  };
+</script>
+</html>

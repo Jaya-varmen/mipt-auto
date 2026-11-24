@@ -1,0 +1,13 @@
+{
+  "base_url": "https://edu.mipt.ru/member",
+  "course_url": "",
+  "course_key": "python-10-11",
+  "course_title": "Программирование на Python для 10–11 классов (очно)",
+  "module_title": "Модуль 1. Базовый Python в формате ЕГЭ",
+  "browser_channel": "chrome",
+  "timeout_ms": 10000,
+  "result_timeout_ms": 45000,
+  "collection": {},
+  "execution": {}
+}
+
