@@ -6,7 +6,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QScrollArea
 
 from mipt_auto.control import TimingPolicy
 from mipt_auto.gui import MainWindow, STYLE
@@ -83,6 +83,21 @@ def test_gui_keeps_inspection_action_explicit(app, tmp_path):
         assert window.status.text() == "Ожидаю проверки браузера"
         window.run_completed("Остановлено", False)
         assert window.continue_button.text() == "Продолжить после входа"
+    finally:
+        window.close()
+
+
+def test_settings_controls_keep_their_height_in_small_window(app, tmp_path):
+    window = MainWindow(project_dir=tmp_path)
+    try:
+        window.resize(1000, 760)
+        window.show()
+        app.processEvents()
+        assert isinstance(window.centralWidget(), QScrollArea)
+        assert all(button.height() >= 38 for button in window.course_buttons.values())
+        assert window.mode.height() >= 38
+        assert window.solutions_button.height() >= 38
+        assert window.settings_box.height() >= window.settings_box.minimumSizeHint().height()
     finally:
         window.close()
 

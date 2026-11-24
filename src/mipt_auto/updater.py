@@ -88,11 +88,26 @@ def check_latest_release(project_dir: Path) -> Release | None:
     repository = load_repository(project_dir)
     request = Request(f"https://api.github.com/repos/{repository}/releases/latest",
                       headers={"Accept": "application/vnd.github+json", "User-Agent": "MIPT-Auto-Updater"})
-    try:
-        with urlopen(request, timeout=15) as response:
-            payload = json.load(response)
-    except (HTTPError, URLError, TimeoutError, ValueError):
-        raise AppError("Не удалось проверить выпуск GitHub. Проверьте доступ к репозиторию.") from None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=15) as response:
+                payload = json.load(response)
+            break
+        except HTTPError as exc:
+            if exc.code in {429, 500, 502, 503, 504} and attempt < 2:
+                time.sleep(attempt + 1)
+                continue
+            if exc.code == 404:
+                raise AppError("В GitHub пока нет опубликованного выпуска. Проверьте страницу Releases.") from None
+            raise AppError(f"GitHub вернул ошибку HTTP {exc.code}. Повторите проверку позже.") from None
+        except (URLError, TimeoutError) as exc:
+            if attempt < 2:
+                time.sleep(attempt + 1)
+                continue
+            reason = getattr(exc, "reason", exc)
+            raise AppError(f"Не удалось подключиться к api.github.com: {reason}") from None
+        except ValueError:
+            raise AppError("GitHub вернул некорректный ответ. Повторите проверку позже.") from None
     return select_release(payload, __version__, asset_name())
 
 

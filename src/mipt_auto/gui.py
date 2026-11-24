@@ -10,8 +10,8 @@ from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
     QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView,
-    QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
-    QPushButton, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
+    QLabel, QLayout, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QProgressBar,
+    QPushButton, QScrollArea, QSpinBox, QSplitter, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
     def _build(self):
         root = QWidget()
         outer = QVBoxLayout(root)
+        outer.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         outer.setContentsMargins(26, 22, 26, 22)
         outer.setSpacing(15)
         header = QHBoxLayout()
@@ -179,6 +180,7 @@ class MainWindow(QMainWindow):
 
         self.settings_box = QGroupBox("2. Настройте запуск")
         form = QVBoxLayout(self.settings_box)
+        form.setSpacing(10)
         form.addWidget(QLabel("Курс"))
         courses = QHBoxLayout()
         self.course_group = QButtonGroup(self)
@@ -188,6 +190,7 @@ class MainWindow(QMainWindow):
             button = QPushButton(label)
             button.setObjectName("course")
             button.setCheckable(True)
+            button.setMinimumHeight(38)
             self.course_group.addButton(button)
             self.course_buttons[key] = button
             courses.addWidget(button)
@@ -199,6 +202,7 @@ class MainWindow(QMainWindow):
         self.mode.addItem("edu.mipt.ru · просмотр задач", "read")
         self.mode.addItem("edu.mipt.ru · тест одной задачи", "single")
         self.mode.addItem("Локальная демонстрация", "demo")
+        self.mode.setMinimumHeight(38)
         form.addWidget(self.mode)
         self.task_id_label = QLabel("ID задачи для теста")
         self.task_id_input = QLineEdit()
@@ -212,6 +216,7 @@ class MainWindow(QMainWindow):
             spin.setRange(1, 4)
             spin.setValue(initial)
             spin.setSuffix(" мин")
+            spin.setMinimumHeight(38)
         delays.addWidget(QLabel("От"))
         delays.addWidget(self.delay_min)
         delays.addWidget(QLabel("до"))
@@ -225,6 +230,7 @@ class MainWindow(QMainWindow):
         self.solution_label.setWordWrap(True)
         form.addWidget(self.solution_label)
         self.solutions_button = QPushButton("Выбрать базу решений…")
+        self.solutions_button.setMinimumHeight(38)
         form.addWidget(self.solutions_button)
         form.addStretch()
         explanation = QLabel("Выполненные задачи пропускаются. При отказе или неизвестном результате очередь останавливается.")
@@ -232,7 +238,7 @@ class MainWindow(QMainWindow):
         explanation.setObjectName("muted")
         form.addWidget(explanation)
         top.addWidget(self.settings_box, 2)
-        outer.addLayout(top, 4)
+        outer.addLayout(top)
 
         progress_box = QGroupBox("Выполнение")
         progress_layout = QGridLayout(progress_box)
@@ -294,7 +300,11 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.stop_button)
         actions.addWidget(self.start_button)
         outer.addLayout(actions)
-        self.setCentralWidget(root)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(root)
+        self.setCentralWidget(scroll)
 
         self.add_button.clicked.connect(self.add_account)
         self.import_button.clicked.connect(self.import_csv)
@@ -328,7 +338,10 @@ class MainWindow(QMainWindow):
             self.store.upsert_account(record.email, bool(record.password))
 
     def show_error(self, text):
-        QMessageBox.warning(self, "MIPT Auto", text)
+        dialog = QMessageBox(QMessageBox.Icon.Warning, "MIPT Auto", text,
+                             QMessageBox.StandardButton.Ok, self)
+        dialog.setStyleSheet("QMessageBox { background: #F3F5FA; } QMessageBox QLabel { color: #202942; }")
+        dialog.exec()
 
     def _restore_settings(self):
         try:
