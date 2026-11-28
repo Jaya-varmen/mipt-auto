@@ -87,6 +87,19 @@ def test_gui_keeps_inspection_action_explicit(app, tmp_path):
         window.close()
 
 
+def test_gui_offers_continue_after_task_error(app, tmp_path):
+    window = MainWindow(project_dir=tmp_path)
+    try:
+        window.request_recovery("Ошибка задачи. Следующая будет открыта после подтверждения.")
+        assert window.continue_button.text() == "Продолжить после ошибки"
+        assert window.continue_button.isEnabled()
+        assert window.status.text() == "Ожидаю решения по ошибке"
+        window.run_completed("Готово", True)
+        assert window.continue_button.text() == "Продолжить после входа"
+    finally:
+        window.close()
+
+
 def test_settings_controls_keep_their_height_in_small_window(app, tmp_path):
     window = MainWindow(project_dir=tmp_path)
     try:

@@ -15,6 +15,7 @@ def test_editor_uses_native_edit_context_without_clipboard(page, config):
           document.querySelector('.monaco-editor').addEventListener('click', () => field.focus());
           const ec = new EditContext({text:'old code', selectionStart:0, selectionEnd:8});
           field.editContext = ec;
+          window.monaco = {editor:{getModels:() => [{getValue:() => ec.text}]}};
           ec.addEventListener('textupdate', () => {field.textContent = ec.text;});
           field.addEventListener('keydown', e => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
@@ -43,6 +44,7 @@ def test_editor_waits_for_monaco_input_after_shell_appears(page, config):
             root.addEventListener('click', () => field.focus());
             const ec = new EditContext({text:'', selectionStart:0, selectionEnd:0});
             field.editContext = ec;
+            window.monaco = {editor:{getModels:() => [{getValue:() => ec.text}]}};
             ec.addEventListener('textupdate', () => {field.textContent = ec.text;});
             field.addEventListener('keydown', e => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
@@ -70,6 +72,7 @@ def test_editor_uses_input_outside_monaco_and_clicks_past_line_numbers(page, con
         <script>
           const root = document.querySelector('.monaco-editor');
           const input = document.querySelector('textarea.inputarea');
+          window.monaco = {editor:{getModels:() => [{getValue:() => input.value}]}};
           root.querySelector('.view-lines').addEventListener('click', () => input.focus());
           input.addEventListener('input', () => {
             const lines = root.querySelector('.view-lines');
@@ -86,6 +89,54 @@ def test_editor_uses_input_outside_monaco_and_clicks_past_line_numbers(page, con
     code = 'group = input().strip()\nidentifier = input().strip()\nprint(group + "-" + identifier[-4:])\n'
     Portal(page, config).fill_editor(code)
     assert page.locator('textarea.inputarea').input_value() == code
+
+
+def test_editor_removes_automatic_indent_and_preserves_elif_alignment(page, config):
+    page.goto(config.base_url)
+    page.set_content('''<div class="monaco-editor" style="width:600px;height:200px;border:1px solid black">
+          <div class="view-lines" style="width:500px;height:180px">old code</div>
+        </div>
+        <textarea class="inputarea" role="textbox" style="width:1px;height:1px;opacity:0">old code</textarea>
+        <script>
+          const root = document.querySelector('.monaco-editor');
+          const input = document.querySelector('textarea.inputarea');
+          root.querySelector('.view-lines').addEventListener('click', () => input.focus());
+          const render = () => {
+            root.querySelector('.view-lines').replaceChildren(...input.value.split('\\n').map((text, index) => {
+              const line = document.createElement('div');
+              line.className = 'view-line';
+              line.style.top = (index * 20) + 'px';
+              line.style.height = '20px';
+              line.textContent = text.replaceAll(' ', '\\u00a0');
+              return line;
+            }));
+          };
+          input.addEventListener('input', render);
+          render();
+          window.autoIndents = 0;
+          input.addEventListener('beforeinput', event => {
+            if (event.data !== '\\n') return;
+            event.preventDefault();
+            const before = input.value.slice(0, input.selectionStart);
+            const previous = before.split('\\n').at(-1);
+            const indent = previous.match(/^\\s*/)[0] + (previous.trimEnd().endsWith(':') ? '    ' : '');
+            input.setRangeText('\\n' + indent, input.selectionStart, input.selectionEnd, 'end');
+            window.autoIndents++;
+            input.dispatchEvent(new Event('input', {bubbles:true}));
+          });
+        </script>''')
+    config.execution['editor_kind'] = 'monaco'
+    config.execution['editor'] = {'css': '.monaco-editor'}
+    code = ("x, y = map(int, input().split())\n"
+            "if x > 0 and y > 0:\n"
+            "    print(1)\n"
+            "elif x < 0 and y > 0:\n"
+            "    print(2)\n"
+            "else:\n"
+            "    print(4)\n")
+    Portal(page, config).fill_editor(code)
+    assert page.locator('textarea.inputarea').input_value() == code
+    assert page.evaluate('window.autoIndents') > 0
 
 
 def test_editor_diagnostic_does_not_save_field_values(page, config, tmp_path):
@@ -126,3 +177,16 @@ def test_submit_button_finds_visible_text_in_shadow_component(page, config):
     assert button.is_enabled()
     button.click()
     assert page.evaluate('window.submitClicks') == 1
+
+
+def test_real_portal_rejected_message_is_detected_in_output_panel(page, config):
+    page.goto(config.base_url)
+    page.set_content('''<div role="tabpanel" id="test-content-output">
+        <strong>Решение не прошло проверку</strong>
+        <p>Тесты нашли расхождение с ожидаемым результатом.</p>
+    </div>''')
+    config.base_url = "https://edu.mipt.ru/member"
+    config.execution.pop("rejected", None)
+    marker = Portal(page, config).rejected_marker()
+    assert marker is not None
+    assert marker.inner_text() == "Решение не прошло проверку"

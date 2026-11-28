@@ -14,7 +14,7 @@ from .demo import demo_config, demo_server
 from .diagnostics import capture_editor_structure
 from .errors import AppError
 from .login import prepare_login, wait_for_automatic_login
-from .models import Solution, SolutionLibrary
+from .models import Result, Solution, SolutionLibrary
 from .portal import Portal
 from .runner import run_sequence
 from .storage import Store
@@ -48,6 +48,7 @@ class RunOptions:
 class RunnerWorker(QThread):
     event = Signal(str, object)
     needs_user = Signal(str, bool)
+    needs_recovery = Signal(str)
     completed = Signal(str, bool)
 
     def __init__(self, options: RunOptions, parent=None):
@@ -79,6 +80,33 @@ class RunnerWorker(QThread):
         self.control.check()
         self.event.emit("resumed", None)
 
+    def ask_recovery(self, task, problem, page) -> bool:
+        """Оставляем браузер и аккаунт открытыми до явного решения оператора."""
+        if page.is_closed():
+            return False
+        if isinstance(problem, Result):
+            reason = ("Результат не появился за время ожидания" if problem == Result.TIMEOUT
+                      else "Результат проверки неоднозначен")
+        else:
+            reason = str(problem) if isinstance(problem, AppError) else "Ошибка браузера"
+        self.resume_event.clear()
+        self.needs_recovery.emit(
+            f"{task.task_id}: {reason}\nПроверьте задачу в открытом браузере. "
+            "Кнопка «Продолжить после ошибки» пропустит её и откроет следующую "
+            "без повторной авторизации и отправки."
+        )
+        while not self.resume_event.is_set():
+            self.control.check()
+            if page.is_closed():
+                return False
+            try:
+                page.wait_for_timeout(100)
+            except PlaywrightError:
+                return False
+        self.control.check()
+        self.event.emit("resumed", None)
+        return True
+
     def run(self):
         opts = self.options
         try:
@@ -106,6 +134,8 @@ class RunnerWorker(QThread):
                     total_accepted = 0
                     total_completed = 0
                     total_missing = 0
+                    total_rejected = 0
+                    total_skipped_errors = 0
                     for index, account in enumerate(opts.accounts):
                         self.control.check()
                         self.event.emit("account", {"index": index + 1, "total": len(opts.accounts), "email": account["email"]})
@@ -133,7 +163,12 @@ class RunnerWorker(QThread):
                                     self.event.emit("log", f"Список прочитан: {len(tasks)} задач.")
                                     continue
                                 try:
-                                    result = run_sequence(portal, tasks, library, store, self.control, timing, self.report_event)
+                                    result = run_sequence(
+                                        portal, tasks, library, store, self.control, timing, self.report_event,
+                                        on_error=(lambda task, problem: self.ask_recovery(task, problem, page))
+                                        if opts.mode in {"execute", "demo"} else None,
+                                        continue_on_rejected=opts.mode in {"execute", "demo"},
+                                    )
                                 except (AppError, PlaywrightError) as exc:
                                     if not page.is_closed():
                                         diagnostic_note = ""
@@ -156,6 +191,8 @@ class RunnerWorker(QThread):
                                 total_accepted += result.accepted
                                 total_completed += result.completed
                                 total_missing += result.missing
+                                total_rejected += result.rejected
+                                total_skipped_errors += result.skipped_errors
                                 if result.stopped:
                                     reason = ("Результат проверки не подтверждён за время ожидания"
                                               if result.stopped == "timeout" else f"Результат: {result.stopped}")
@@ -174,7 +211,10 @@ class RunnerWorker(QThread):
                                             page, inspection=True,
                                         )
                                     raise AppError(f"{reason}. Повторной отправки нет.")
-                    self.completed.emit(f"Готово. Принято: {total_accepted}; уже выполнены: {total_completed}; без решения: {total_missing}.", True)
+                    self.completed.emit(
+                        f"Готово. Принято: {total_accepted}; уже выполнены: {total_completed}; "
+                        f"без решения: {total_missing}; отклонено: {total_rejected}; "
+                        f"пропущено после ошибки: {total_skipped_errors}.", True)
         except Cancelled:
             self.completed.emit("Остановлено оператором. Неопределённую отправку проверьте на сайте.", False)
         except AppError as exc:

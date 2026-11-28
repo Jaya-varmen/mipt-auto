@@ -38,6 +38,10 @@
       "scope_css": "[role=tabpanel][id$='-content-output']",
       "text": "Решение принято"
     },
+    "rejected": {
+      "scope_css": "[role=tabpanel][id$='-content-output']",
+      "text": "Решение не прошло проверку"
+    },
     "attempt_limit_seconds": 540
   }
 }

@@ -233,7 +233,11 @@ class MainWindow(QMainWindow):
         self.solutions_button.setMinimumHeight(38)
         form.addWidget(self.solutions_button)
         form.addStretch()
-        explanation = QLabel("Выполненные задачи пропускаются. При отказе или неизвестном результате очередь останавливается.")
+        explanation = QLabel(
+            "Выполненные задачи пропускаются. Отклонённое решение отмечается в журнале, "
+            "затем открывается следующая задача. При ошибке или неизвестном результате "
+            "проверьте браузер и нажмите «Продолжить после ошибки» для пропуска задачи."
+        )
         explanation.setWordWrap(True)
         explanation.setObjectName("muted")
         form.addWidget(explanation)
@@ -543,6 +547,7 @@ class MainWindow(QMainWindow):
         self.worker = RunnerWorker(options, self)
         self.worker.event.connect(self.handle_event)
         self.worker.needs_user.connect(self.request_user)
+        self.worker.needs_recovery.connect(self.request_recovery)
         self.worker.completed.connect(self.run_completed)
         self.worker.finished.connect(self.worker_finished)
         self.accounts_box.setEnabled(False)
@@ -592,7 +597,9 @@ class MainWindow(QMainWindow):
                 if self.tasks_table.item(row, 0).text() == self.current_task:
                     self.tasks_table.item(row, 2).setText(text)
                     break
-            if value != "Открываю задачу":
+            if value in {"accepted", "rejected", "Уже выполнена — пропуск",
+                         "Нет решения в базе — пропуск", "Пропущена после ошибки",
+                         "Пропущена после проверки"}:
                 self.progress.setValue(min(self.progress.maximum(), self.progress.value() + 1))
         elif kind == "delay":
             self.status.setText("Пауза перед вводом кода")
@@ -622,6 +629,14 @@ class MainWindow(QMainWindow):
         self.continue_button.setText("Закрыть браузер" if inspection else "Продолжить после входа")
         self.continue_button.setEnabled(True)
         self.status.setText("Ожидаю проверки браузера" if inspection else "Нужен ручной вход")
+
+    def request_recovery(self, message):
+        self.prompt_label.setText(message)
+        self.prompt_label.show()
+        self.continue_button.setText("Продолжить после ошибки")
+        self.continue_button.setEnabled(True)
+        self.status.setText("Ожидаю решения по ошибке")
+        self.append_log("Пауза после ошибки задачи: браузер и вход сохранены.")
 
     def continue_run(self):
         if self.worker:

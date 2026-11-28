@@ -2,6 +2,7 @@ import time
 import logging
 import re
 import random
+import sys
 from urllib.parse import urljoin
 
 from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout
@@ -176,6 +177,109 @@ class Portal:
                     return
         self.open_task(task)
 
+    def monaco_text(self, editor) -> str | None:
+        """EditContext.text содержит лишь фрагмент и не является моделью Monaco."""
+        return editor.evaluate("""root => {
+            const models = globalThis.monaco?.editor?.getModels?.() || [];
+            if (models.length === 1) return models[0].getValue();
+            return null;
+        }""")
+
+    def monaco_rendered_lines(self, editor) -> dict[int, str]:
+        """Monaco отдаёт номер видимой строки через top/height, пробелы — как NBSP."""
+        records = editor.evaluate("""root => [...root.querySelectorAll('.view-lines .view-line')]
+            .map(line => {
+                const top = parseFloat(line.style.top);
+                const height = parseFloat(line.style.height);
+                if (!Number.isFinite(top) || !height) return null;
+                const index = Math.round(top / height);
+                if (Math.abs(top / height - index) > 0.1) return null;
+                return {index, text: line.textContent.replace(/\\u00a0/g, ' ')};
+            }).filter(Boolean)""")
+        return {item["index"]: item["text"] for item in records}
+
+    def monaco_line(self, editor, index: int, expected: str | None = None) -> str | None:
+        for _ in range(20):
+            value = self.monaco_rendered_lines(editor).get(index)
+            if value is not None and (expected is None or value == expected):
+                return value
+            self.page.wait_for_timeout(50)
+        return self.monaco_rendered_lines(editor).get(index)
+
+    def monaco_line_shorter(self, editor, index: int, previous_length: int) -> str | None:
+        for _ in range(20):
+            value = self.monaco_rendered_lines(editor).get(index)
+            if value is not None and len(value) < previous_length:
+                return value
+            self.page.wait_for_timeout(50)
+        return self.monaco_rendered_lines(editor).get(index)
+
+    def verify_monaco_rendered(self, editor, expected_lines: list[str]):
+        self.page.keyboard.press("Meta+ArrowUp" if sys.platform == "darwin" else "Control+Home")
+        self.page.wait_for_timeout(50)
+        checked = set()
+        for _ in range(max(5, len(expected_lines))):
+            if self.control:
+                self.control.check()
+            for index, text in self.monaco_rendered_lines(editor).items():
+                if 0 <= index < len(expected_lines):
+                    if text != expected_lines[index]:
+                        raise AppError(f"Текст Monaco отличается от решения в строке {index + 1}. Код не отправлен.")
+                    checked.add(index)
+            if len(checked) == len(expected_lines):
+                return
+            self.page.keyboard.press("PageDown")
+            self.page.wait_for_timeout(50)
+        raise AppError(f"Не удалось проверить все строки Monaco ({len(checked)} из {len(expected_lines)}). Код не отправлен.")
+
+    def fill_monaco_lines(self, editor, code: str):
+        """Enter добавляет отступ автоматически; перед каждой строкой удаляем его."""
+        expected = code.replace("\r\n", "\n")
+        lines = expected.split("\n")
+        self.page.keyboard.press("ControlOrMeta+A")
+        self.page.keyboard.press("Backspace")
+        model = self.monaco_text(editor)
+        model_available = model is not None
+        if (model is not None and model != "") or (model is None and self.monaco_line(editor, 0, "") != ""):
+            raise AppError("Не удалось очистить редактор Monaco. Код не отправлен.")
+        prefix = ""
+        for index, line in enumerate(lines):
+            if self.control:
+                self.control.check()
+            if index:
+                self.page.keyboard.insert_text("\n")
+                prefix += "\n"
+                current = (self.monaco_text(editor) if model_available
+                           else self.monaco_line(editor, index))
+                if current is None or (model_available and not current.startswith(prefix)):
+                    raise AppError(f"Редактор Monaco изменил строки перед строкой {index + 1}. Код не отправлен.")
+                for _ in range(50):
+                    indentation = current[len(prefix):] if model_available else current
+                    if not indentation:
+                        break
+                    if not indentation.isspace() or "\n" in indentation:
+                        raise AppError("Редактор Monaco добавил неожиданный текст. Код не отправлен.")
+                    self.page.keyboard.press("Backspace")
+                    updated = (self.monaco_text(editor) if model_available
+                               else self.monaco_line_shorter(editor, index, len(current)))
+                    if updated is None or len(updated) >= len(current):
+                        raise AppError(f"Не удалось убрать автоматический отступ Monaco в строке {index + 1}. Код не отправлен.")
+                    current = updated
+                else:
+                    raise AppError("Слишком большой автоматический отступ Monaco. Код не отправлен.")
+                if model_available and current != prefix:
+                    raise AppError("Не удалось очистить автоматический отступ Monaco. Код не отправлен.")
+                if not model_available and self.monaco_line(editor, index, "") != "":
+                    raise AppError("Не удалось очистить автоматический отступ Monaco. Код не отправлен.")
+            if line:
+                self.page.keyboard.insert_text(line)
+                prefix += line
+            model = self.monaco_text(editor)
+            if (model is not None and model != prefix) or (model is None and self.monaco_line(editor, index, line) != line):
+                raise AppError(f"Текст в Monaco отличается от решения после строки {index + 1}. Код не отправлен.")
+        if self.monaco_text(editor) is None:
+            self.verify_monaco_rendered(editor, lines)
+
     def fill_editor(self, code: str):
         kind = self.config.execution["editor_kind"]
         if kind == "monaco":
@@ -193,25 +297,11 @@ class Portal:
                         lines.click(position={"x": 40, "y": 18}, timeout=1000)
                     else:
                         editor.click(position={"x": 120, "y": 24}, timeout=1000)
-                    self.page.keyboard.press("ControlOrMeta+A")
-                    self.page.keyboard.insert_text(code)
-                    # Сверяем модель Monaco и строки на экране. Сам код в лог не пишем.
-                    for _ in range(10):
-                        matches = editor.evaluate("""(root, expected) => {
-                            const normalize = s => s.replace(/\\r\\n/g, '\\n').replace(/\\u00a0/g, ' ').replace(/\\n+$/, '');
-                            const values = [...root.querySelectorAll('[role="textbox"]')]
-                                .map(e => e.editContext?.text).filter(v => typeof v === 'string');
-                            const models = globalThis.monaco?.editor?.getModels?.() || [];
-                            if (models.length === 1) values.push(models[0].getValue());
-                            const lines = [...root.querySelectorAll('.view-lines .view-line')];
-                            if (lines.length) values.push(lines.map(e => e.textContent).join('\\n'));
-                            return values.some(v => normalize(v) === normalize(expected));
-                        }""", code, timeout=1000)
-                        if matches:
-                            return
-                        self.page.wait_for_timeout(200)
+                    if self.monaco_text(editor) is not None or self.monaco_rendered_lines(editor):
+                        self.fill_monaco_lines(editor, code)
+                        return
                 except PlaywrightError:
-                    # Перерисовка во время клика или проверки допускает повтор.
+                    # Перерисовка во время активации допускает повтор.
                     pass
                 if time.monotonic() >= activation_deadline:
                     raise AppError("Не удалось подтвердить код в Monaco. Код не отправлен.")
@@ -281,6 +371,18 @@ class Portal:
         fallback = scope.get_by_text("Решение принято", exact=True).filter(visible=True)
         return fallback if is_visible(fallback) else None
 
+    def rejected_marker(self):
+        if self.config.execution.get("rejected"):
+            configured = self.execution_locator("rejected").filter(visible=True)
+            if is_visible(configured):
+                return configured
+        if self.config.portal_origin == "https://edu.mipt.ru":
+            output = self.execution_scope().locator("[role=tabpanel][id$='-content-output']").filter(visible=True)
+            fallback = output.get_by_text("Решение не прошло проверку", exact=True).filter(visible=True)
+            if is_visible(fallback):
+                return fallback
+        return None
+
     def verify_task(self, task: Task):
         self.ensure_origin()
         heading = one_visible(self.execution_locator("task_heading"), "название открытой задачи", timeout_ms=30000)
@@ -324,7 +426,7 @@ class Portal:
             raise AppError("Решение не соответствует курсу и задаче.")
         self.notify("phase", "Проверяю заголовок задачи")
         self.verify_task(task)
-        if self.accepted_marker() or is_visible(self.execution_locator("rejected")):
+        if self.accepted_marker() or self.rejected_marker():
             raise AppError("На странице уже есть результат. Автоматическая повторная попытка не начнётся.")
         self.notify("phase", "Определяю состояние попытки")
         initial_state = self.attempt_state()
@@ -383,7 +485,7 @@ class Portal:
                 control.wait_until(post_deadline, self.page, remaining=known_remaining,
                                    reserve_seconds=timing.reserve_seconds, wall_deadline=post_wall_deadline)
             self.verify_task(task)
-            if self.accepted_marker() or is_visible(self.execution_locator("rejected")):
+            if self.accepted_marker() or self.rejected_marker():
                 raise AppError("Обнаружен старый результат. Отправка остановлена.")
             submit_button = self.submit_button()
             if not submit_button.is_enabled():
@@ -447,8 +549,8 @@ class Portal:
                 control.check()
             self.verify_task(task)
             accepted = self.accepted_marker()
-            rejected = self.execution_locator("rejected").filter(visible=True)
-            good, bad = accepted is not None, is_visible(rejected)
+            rejected = self.rejected_marker()
+            good, bad = accepted is not None, rejected is not None
             if good and bad:
                 return Result.UNKNOWN
             if good:

@@ -37,9 +37,9 @@ def test_release_check_retries_temporary_network_error(monkeypatch, tmp_path):
     import mipt_auto.updater as updater
 
     name = "mipt-auto-macos-arm64.zip"
-    payload = {"tag_name": "v0.3.3", "draft": False, "prerelease": False,
+    payload = {"tag_name": "v0.3.4", "draft": False, "prerelease": False,
                "assets": [{"name": name,
-                           "browser_download_url": "https://github.com/example/project/releases/download/v0.3.3/" + name,
+                           "browser_download_url": "https://github.com/example/project/releases/download/v0.3.4/" + name,
                            "digest": "sha256:" + "a" * 64}]}
     calls = []
 
@@ -53,14 +53,14 @@ def test_release_check_retries_temporary_network_error(monkeypatch, tmp_path):
     monkeypatch.setattr(updater, "urlopen", fake_urlopen)
     monkeypatch.setattr(updater, "asset_name", lambda: name)
     monkeypatch.setattr(updater.time, "sleep", lambda _seconds: None)
-    assert check_latest_release(tmp_path).version == "0.3.3"
+    assert check_latest_release(tmp_path).version == "0.3.4"
     assert calls == [15, 15]
 
 
 def test_release_archive_preserves_local_data_and_rejects_secrets(tmp_path):
     output = tmp_path / "dist"
     subprocess.run([sys.executable, str(ROOT / "scripts" / "build_release.py"), "--output", str(output),
-                    "--tag", "v0.3.2"], check=True, capture_output=True)
+                    "--tag", "v0.3.3"], check=True, capture_output=True)
     archive = output / "mipt-auto-macos-arm64.zip"
     with ZipFile(archive) as bundle:
         assert "config/edu-8-9.json" in bundle.namelist()
@@ -73,13 +73,13 @@ def test_release_archive_preserves_local_data_and_rejects_secrets(tmp_path):
     (project / "config.local.json").write_text(json.dumps({"course_key": "private"}), encoding="utf-8")
     (project / "data").mkdir()
     (project / "data" / "progress.sqlite3").write_bytes(b"history")
-    install_archive(project, archive, expected_version="0.3.2", run_pip=False)
+    install_archive(project, archive, expected_version="0.3.3", run_pip=False)
     assert (project / "accounts.csv").read_text(encoding="utf-8").endswith("secret\n")
     assert (project / "solutions.local.json").read_text(encoding="utf-8") == "[]"
     assert json.loads((project / "config.local.json").read_text(encoding="utf-8"))["course_key"] == "private"
     assert (project / "data" / "progress.sqlite3").read_bytes() == b"history"
     with pytest.raises(AppError):
-        install_archive(project, archive, expected_version="0.3.3", run_pip=False)
+        install_archive(project, archive, expected_version="0.3.4", run_pip=False)
     bad = tmp_path / "bad.zip"
     with ZipFile(bad, "w") as bundle:
         bundle.writestr("accounts.csv", "email,password\n")
