@@ -85,3 +85,24 @@ def test_release_archive_preserves_local_data_and_rejects_secrets(tmp_path):
         bundle.writestr("accounts.csv", "email,password\n")
     with pytest.raises(AppError):
         install_archive(project, bad, run_pip=False)
+
+
+def test_release_builds_when_repository_has_no_readme(tmp_path, monkeypatch):
+    from scripts import build_release
+
+    for name in build_release.TOP_LEVEL:
+        (tmp_path / name).write_text("release file", encoding="utf-8")
+    for name in build_release.CONFIG:
+        path = tmp_path / "config" / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+    version_file = tmp_path / "src" / "mipt_auto" / "__init__.py"
+    version_file.parent.mkdir(parents=True)
+    version_file.write_text('__version__ = "0.3.3"\n', encoding="utf-8")
+    monkeypatch.setattr(build_release, "ROOT", tmp_path)
+    monkeypatch.setattr(build_release, "VERSION_FILE", version_file)
+
+    archives = build_release.build(tmp_path / "dist", "v0.3.3")
+    with ZipFile(archives[0]) as bundle:
+        assert "README.md" not in bundle.namelist()
+        assert "src/mipt_auto/__init__.py" in bundle.namelist()

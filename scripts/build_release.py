@@ -9,7 +9,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = ROOT / "src" / "mipt_auto" / "__init__.py"
 ASSETS = ("mipt-auto-macos-arm64.zip", "mipt-auto-windows-x64.zip")
-TOP_LEVEL = ("pyproject.toml", "README.md", "Windows-Setup.cmd", "Windows-Start.cmd",
+TOP_LEVEL = ("pyproject.toml", "Windows-Setup.cmd", "Windows-Start.cmd",
              "Запустить MIPT Auto.command")
 CONFIG = ("edu-observed.json", "edu-8-9.json", "site.example.json")
 
@@ -24,6 +24,9 @@ def version() -> str:
 
 def release_files() -> list[Path]:
     files = [ROOT / name for name in TOP_LEVEL]
+    readme = ROOT / "README.md"
+    if readme.is_file():
+        files.append(readme)
     files += [ROOT / "config" / name for name in CONFIG]
     files += [p for p in (ROOT / "src" / "mipt_auto").rglob("*")
               if p.is_file() and p.suffix in {".py", ".html"}]
